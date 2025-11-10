@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from fpdf import FPDF
 from datetime import datetime
 import re
 import os
@@ -12,7 +11,6 @@ from analysis import summarize_data, correlation_matrix, simple_regression, dete
 from visualize import generate_plot
 from memory import initialize_memory, add_message, get_history
 from explain import explain_correlation, explain_regression
-from reports import export_pdf_report
 
 # =====================================
 # 🔐 USER AUTHENTICATION FUNCTIONS
@@ -43,6 +41,7 @@ def authenticate_user(username, password):
     else:
         return None
 
+
 # =====================================
 # 🧭 AUTH PAGES (LOGIN / REGISTER)
 # =====================================
@@ -68,6 +67,7 @@ def login_page():
     if st.button("Register Here"):
         st.session_state["show_register"] = True
         st.rerun()
+
 
 def register_page():
     st.title("📝 Create a New Account")
@@ -96,6 +96,7 @@ def register_page():
         st.session_state["show_register"] = False
         st.rerun()
 
+
 # =====================================
 # 💬 MAIN CHATBOT PAGE
 # =====================================
@@ -105,17 +106,18 @@ def chatbot_page():
     st.write("Upload your dataset and chat with your AI assistant about analysis, visualization, and statistics.")
     initialize_memory()
 
+    # --- SIDEBAR START ---
     st.sidebar.header(f"👋 Hello, {st.session_state['fullname']}")
     if st.sidebar.button("🚪 Log Out"):
         st.session_state.clear()
         st.rerun()
 
-    # === Sidebar Controls ===
     st.sidebar.header("⚙️ Control Panel")
     if st.sidebar.button("🧹 Clear Chat History"):
         st.session_state["history"] = []
         st.success("Chat history cleared!")
 
+    # --- Memory & Export ---
     st.sidebar.header("🧠 Memory & Export")
     if "data" in st.session_state:
         df = st.session_state["data"]
@@ -133,14 +135,19 @@ def chatbot_page():
     else:
         st.sidebar.warning("Upload a dataset to enable export options.")
 
+    # --- Dataset Info ---
     st.sidebar.subheader("📊 Dataset Info")
     if "data" in st.session_state:
         data = st.session_state["data"]
         st.sidebar.write(f"**Rows:** {data.shape[0]}")
         st.sidebar.write(f"**Columns:** {data.shape[1]}")
         st.sidebar.write(f"**Columns:** {', '.join(list(data.columns[:5]))} ...")
+    else:
+        st.sidebar.info("Upload a dataset to view its info.")
 
     st.sidebar.write("---")
+
+    # --- Quick Tips ---
     st.sidebar.caption("💡 Try asking me:")
     st.sidebar.markdown("""
     - "Show summary statistics"
@@ -153,10 +160,12 @@ def chatbot_page():
     - "Create column BMI = Weight / Height ** 2"
     - "Normalize Age"
     - "One-hot encode Gender"
+    - "Merge with another dataset"
     """)
+    # --- SIDEBAR END ---
 
     # === Dataset Upload ===
-    uploaded_file = st.file_uploader("📂 Upload CSV or Excel", type=["csv", "xlsx"])
+    uploaded_file = st.file_uploader("📂 Upload your main dataset", type=["csv", "xlsx"])
     if uploaded_file:
         if uploaded_file.name.endswith(".csv"):
             df = pd.read_csv(uploaded_file)
@@ -167,7 +176,7 @@ def chatbot_page():
     else:
         st.info("👋 Please upload a dataset to start chatting.")
 
-    # === Chat Interface ===
+    # === Chat Input ===
     user_input = st.text_input("💬 Ask me anything (e.g., 'Filter where Age > 30')")
     if user_input:
         add_message("user", user_input)
@@ -177,7 +186,6 @@ def chatbot_page():
             add_message("bot", "Please upload a dataset first 📂.")
         else:
             df = st.session_state["data"]
-
             try:
                 # --- ANALYZE ---
                 if intent == "analyze":
@@ -198,25 +206,17 @@ def chatbot_page():
                 # --- CORRELATION ---
                 elif intent == "correlation":
                     corr = correlation_matrix(df)
-                    add_message("bot", "Here’s your correlation matrix 📘:")
                     st.write(corr)
-                    explanation = explain_correlation(corr, user_input)
-                    add_message("bot", explanation)
-                    st.write(explanation)
+                    add_message("bot", "Here’s your correlation matrix 📘:")
 
                 # --- REGRESSION ---
                 elif intent == "regression":
-                    st.write("Select columns for regression:")
                     cols = df.columns.tolist()
                     x_col = st.selectbox("Independent (X)", cols)
                     y_col = st.selectbox("Dependent (Y)", cols)
                     if st.button("Run Regression"):
                         model_info = simple_regression(df, x_col, y_col)
-                        add_message("bot", f"Regression Result:\n{model_info}")
-                        explanation = explain_regression(model_info, user_input)
-                        add_message("bot", explanation)
                         st.json(model_info)
-                        st.write(explanation)
 
                 # --- CLEANING ---
                 elif intent == "clean":
@@ -226,35 +226,23 @@ def chatbot_page():
 
                 # --- DATA TYPES ---
                 elif intent == "dtypes":
-                    add_message("bot", "Here are the data types for each column 📘:")
                     st.write(df.dtypes)
+                    add_message("bot", "Here are the data types for each column 📘:")
 
                 # --- COLUMN SELECTION ---
                 elif intent == "select_columns":
-                    add_message("bot", "Sure! Which columns would you like to see? 🧮")
                     cols = re.findall(r'\b[A-Za-z_]+\b', user_input)
-                    cols = [c for c in cols if c.lower() not in ["select", "show", "columns", "column", "display"]]
+                    cols = [c for c in cols if c in df.columns]
                     if cols:
-                        valid = [c for c in cols if c in df.columns]
-                        if valid:
-                            st.write(df[valid].head())
-                            add_message("bot", f"Here are your selected columns: {', '.join(valid)} ✅")
-                        else:
-                            add_message("bot", "I couldn’t find those columns. Please check their names.")
-                    else:
-                        add_message("bot", "Please mention the column names you want to select.")
+                        st.write(df[cols].head())
+                        add_message("bot", f"Here are your selected columns: {', '.join(cols)} ✅")
 
                 # --- FILTERING ---
                 elif intent == "filter":
-                    add_message("bot", "Let's filter your data 🔍")
                     match = re.search(r"(\b\w+\b)\s*(=|>|<|>=|<=)\s*([\w\s]+)", user_input)
                     if match:
                         col, op, val = match.groups()
-                        col, val = col.strip(), val.strip()
-
-                        if col not in df.columns:
-                            add_message("bot", f"Column '{col}' not found.")
-                        else:
+                        if col in df.columns:
                             try:
                                 if op == "=":
                                     filtered = df[df[col].astype(str) == val]
@@ -268,43 +256,28 @@ def chatbot_page():
                                     filtered = df[df[col] <= float(val)]
                                 else:
                                     filtered = df
-
                                 st.write(filtered.head())
-                                add_message("bot", f"Here are rows where `{col} {op} {val}` ✅")
 
-                                # --- Sanitize filename for Windows ---
-                                def sanitize_filename(name):
-                                    return re.sub(r'[<>:"/\\|?*]', '_', name)
-
-                                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                                safe_label = sanitize_filename(f"{col}_{op}_{val}")
-                                download_filename = f"Filtered_{safe_label}_{timestamp}.csv"
-
-                                # --- Download button ---
                                 csv_data = filtered.to_csv(index=False).encode('utf-8')
                                 st.download_button(
                                     label="📥 Download Filtered Data",
                                     data=csv_data,
-                                    file_name=download_filename,
+                                    file_name=f"Filtered_{col}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                                     mime='text/csv'
                                 )
                             except Exception as e:
                                 add_message("bot", f"⚠️ Could not filter: {e}")
-                    else:
-                        add_message("bot", "Use a format like 'Filter where Age > 30'.")
+                        else:
+                            add_message("bot", f"Column '{col}' not found.")
 
                 # --- OUTLIER DETECTION ---
                 elif intent == "outlier":
-                    add_message("bot", "Detecting outliers in your dataset 🕵️‍♂️")
                     outlier_df = detect_outliers(df)
                     st.write(outlier_df)
                     add_message("bot", "Outliers detected ✅")
 
                 # --- DATA TRANSFORMATION / FEATURE ENGINEERING ---
                 elif intent == "transform":
-                    add_message("bot", "Let's perform data transformation ⚙️")
-
-                    # 1. Create new column
                     match_create = re.search(r"create column (\w+)\s*=\s*(.+)", user_input, re.IGNORECASE)
                     if match_create:
                         new_col, formula = match_create.groups()
@@ -316,74 +289,76 @@ def chatbot_page():
                             add_message("bot", f"✅ Column '{new_col}' created successfully!")
                         except Exception as e:
                             add_message("bot", f"⚠️ Could not create column: {e}")
-
-                    # 2. Encode categorical variables
-                    elif "encode" in user_input.lower():
-                        match_encode = re.search(r"(one[-\s]?hot|label) encode (\w+)", user_input, re.IGNORECASE)
-                        if match_encode:
-                            method, col = match_encode.groups()
-                            if col not in df.columns:
-                                add_message("bot", f"Column '{col}' not found.")
-                            else:
-                                try:
-                                    if "one" in method.lower():
-                                        df = pd.get_dummies(df, columns=[col])
-                                        st.write(df.head())
-                                        add_message("bot", f"✅ Column '{col}' one-hot encoded.")
-                                    else:
-                                        from sklearn.preprocessing import LabelEncoder
-                                        le = LabelEncoder()
-                                        df[col] = le.fit_transform(df[col])
-                                        st.write(df.head())
-                                        add_message("bot", f"✅ Column '{col}' label encoded.")
-                                except Exception as e:
-                                    add_message("bot", f"⚠️ Could not encode column: {e}")
-
-                    # 3. Normalize / Standardize
-                    elif any(word in user_input.lower() for word in ["normalize", "standardize"]):
-                        match_norm = re.search(r"(normalize|standardize) (\w+)", user_input, re.IGNORECASE)
-                        if match_norm:
-                            method, col = match_norm.groups()
-                            if col not in df.columns:
-                                add_message("bot", f"Column '{col}' not found.")
-                            else:
-                                try:
-                                    from sklearn.preprocessing import MinMaxScaler, StandardScaler
-                                    if method.lower() == "normalize":
-                                        scaler = MinMaxScaler()
-                                    else:
-                                        scaler = StandardScaler()
-                                    df[[col]] = scaler.fit_transform(df[[col]])
-                                    st.write(df.head())
-                                    add_message("bot", f"✅ Column '{col}' {method.lower()}d successfully.")
-                                except Exception as e:
-                                    add_message("bot", f"⚠️ Could not {method} column: {e}")
-
-                    else:
-                        add_message("bot", "Please specify a valid transformation, e.g., create, encode, normalize, or standardize.")
-
-                # --- HELP ---
-                elif intent == "help":
-                    add_message("bot", "I can help you with these tasks 🧠:")
+                #----HELP ----
+                elif intent =="help":
+                    add_message("bot","here are some things I can do  :")
                     st.markdown("""
-                        - **Analyze**: summary stats
-                        - **Visualize**: plots and charts
-                        - **Correlate**: relationships
-                        - **Regression**: trends and prediction
-                        - **Select Columns**: show specific variables
-                        - **Filter**: filter rows by condition
-                        - **Outliers**: detect anomalies
-                        - **Transform**: create new columns, encode, normalize, standardize
-                    """)
+                    ### 🧭 Quick Commands
+                                - `show dataset` — Preview your uploaded data 
+                                - `summarize dataset` — Get a statistical overview  
+                                - `visualize age vs salary` — Plot any two columns  
+                                - `find correlation` — Check relationships  
+                                - `run regression` — Build a simple predictive model  
+                                - `clean missing values` — Handle nulls easily  
+                             - `show data types` — See each column’s type  
+                                - `filter where Age > 30` — Filter specific rows  
+                                 - `create column BMI = Weight / Height ** 2` — Add new features  
+                                 - `detect outliers` — Identify anomalies  
+                                - `merge with another dataset` — Combine two datasets  
+                                
+                    
+"""
 
-                # --- UNKNOWN ---
+
+                    )
+
+
+                # --- MERGE DATASETS ---
+                elif intent == "merge":
+                    add_message("bot", "Let's merge two datasets 🔗")
+                    st.subheader("📂 Upload second dataset to merge")
+                    file2 = st.file_uploader("Upload second dataset", type=["csv", "xlsx"], key="merge_file")
+
+                    if file2:
+                        df2 = pd.read_csv(file2) if file2.name.endswith(".csv") else pd.read_excel(file2)
+                        st.write("Preview of second dataset:")
+                        st.write(df2.head())
+
+                        join_col1 = st.selectbox("Select join column from first dataset", df.columns)
+                        join_col2 = st.selectbox("Select join column from second dataset", df2.columns)
+                        join_type = st.selectbox("Join type", ["inner", "left", "right", "outer"])
+                        keep_separate = st.checkbox("Keep merged dataset separate", value=True)
+
+                        if st.button("Merge Datasets"):
+                            try:
+                                merged_df = pd.merge(df, df2, left_on=join_col1, right_on=join_col2, how=join_type)
+                                st.success(f"✅ Merged successfully with {join_type} join.")
+                                st.write(merged_df.head())
+
+                                if keep_separate:
+                                    st.session_state["merged_data"] = merged_df
+                                    st.info("📂 Merged dataset stored separately in memory.")
+                                else:
+                                    st.session_state["data"] = merged_df
+                                    st.success("🔁 Merged dataset replaced the main dataset.")
+
+                                csv_data = merged_df.to_csv(index=False).encode('utf-8')
+                                st.download_button(
+                                    label="📥 Download Merged Dataset",
+                                    data=csv_data,
+                                    file_name=f"Merged_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                    mime='text/csv'
+                                )
+                            except Exception as e:
+                                st.error(f"⚠️ Merge failed: {e}")
+
                 else:
                     add_message("bot", "Sorry, I didn’t quite get that 🤔.")
 
             except Exception as e:
                 add_message("bot", f"⚠️ Error: {e}")
 
-    # === Chat History ===
+    # === Conversation History ===
     st.write("---")
     st.markdown("<h3>💭 Conversation History</h3>", unsafe_allow_html=True)
     for msg in get_history():
@@ -391,6 +366,7 @@ def chatbot_page():
             st.markdown(f"<div style='background:#DCF8C6;padding:8px;border-radius:10px;margin:4px 0;text-align:right;'><b>You:</b> {msg['message']}</div>", unsafe_allow_html=True)
         else:
             st.markdown(f"<div style='background:#E9E9EB;padding:8px;border-radius:10px;margin:4px 0;text-align:left;'><b>Bot:</b> {msg['message']}</div>", unsafe_allow_html=True)
+
 
 # =====================================
 # 🚀 MAIN APP ENTRY
@@ -406,6 +382,7 @@ def main():
             login_page()
     else:
         chatbot_page()
+
 
 if __name__ == "__main__":
     main()

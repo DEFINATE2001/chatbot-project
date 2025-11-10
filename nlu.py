@@ -48,13 +48,17 @@ def detect_intent(user_input):
         return "help"
 
     # --- 12. OUTLIER DETECTION ---
-    elif re.search(r"\b(outlier|anomaly|detect outliers)\b", text):
+    elif re.search(r"\b(outlier|anomaly|detect outliers?)\b", text):
         return "outlier"
 
     # --- 13. DATA TRANSFORMATION / FEATURE ENGINEERING ---
-    elif re.search(r"\b(create|add|new column|encode|normalize|standardize|transform)\b", text):
+    elif re.search(r"\b(create|add|new column|encode|normalize|standardize|transform|feature)\b", text):
         return "transform"
 
-    # --- 14. Fallback ---
+    # --- 14. MERGE / JOIN DATASETS ---
+    elif re.search(r"\b(merge|join|combine|append)\b", text):
+        return "merge"
+
+    # --- 15. Fallback ---
     else:
         return "unknown"
