@@ -129,12 +129,11 @@ def chatbot_page():
             from memory import get_saved_summary
             saved = get_saved_summary()
             if saved:
+                st.sidebar.success("Summary recalled successfully ")
                 st.sidebar.write(saved)
             else:
-                st.sidebar.warning("No saved summary found.")
-    else:
-        st.sidebar.warning("Upload a dataset to enable export options.")
-
+                st.sidebar.warning("⚠️ No saved summary found or it's empty.")
+                
     # --- Dataset Info ---
     st.sidebar.subheader("📊 Dataset Info")
     if "data" in st.session_state:
