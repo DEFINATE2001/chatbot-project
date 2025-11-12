@@ -6,6 +6,9 @@ from datetime import datetime
 import re
 import os
 import random
+from io import BytesIO
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 
 from nlu import detect_intent
 from analysis import summarize_data, correlation_matrix, simple_regression, detect_outliers
@@ -129,12 +132,53 @@ def chatbot_page():
         if st.sidebar.button("📂 Recall Summary"):
             from memory import get_saved_summary
             saved = get_saved_summary()
-            if saved:
+            if saved is not None and not isinstance(saved, bool):
                 st.sidebar.success("Summary recalled successfully ")
                 st.sidebar.write(saved)
             else:
                 st.sidebar.warning("⚠️ No saved summary found or it's empty.")
-                
+
+    # --- 📄 DOWNLOAD CHAT HISTORY AS PDF ---
+    if st.sidebar.button("📄 Download Chat History as PDF"):
+        if "history" in st.session_state and st.session_state["history"]:
+            buffer = BytesIO()
+            pdf = canvas.Canvas(buffer, pagesize=letter)
+            width, height = letter
+
+            pdf.setFont("Helvetica", 12)
+            y = height - 50
+            pdf.drawString(50, y, f"Chat History - Data Mentor Chatbot ({datetime.now().strftime('%Y-%m-%d %H:%M')})")
+            y -= 30
+
+            for msg in st.session_state["history"]:
+                sender = "You" if msg["sender"] == "user" else "Bot"
+                text = f"{sender}: {msg['message']}"
+                lines = []
+                while len(text) > 90:
+                    lines.append(text[:90])
+                    text = text[90:]
+                lines.append(text)
+
+                for line in lines:
+                    if y < 50:
+                        pdf.showPage()
+                        pdf.setFont("Helvetica", 12)
+                        y = height - 50
+                    pdf.drawString(50, y, line)
+                    y -= 20
+
+            pdf.save()
+            buffer.seek(0)
+
+            st.sidebar.download_button(
+                label="⬇️ Save PDF",
+                data=buffer,
+                file_name=f"Chat_History_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                mime="application/pdf"
+            )
+        else:
+            st.sidebar.warning("⚠️ No chat history to export yet.")
+
     # --- Dataset Info ---
     st.sidebar.subheader("📊 Dataset Info")
     if "data" in st.session_state:
@@ -187,41 +231,34 @@ def chatbot_page():
         else:
             df = st.session_state["data"]
             try:
-                # --- ANALYZE ---
                 if intent == "analyze":
                     result = summarize_data(df)
                     add_message("bot", "Here’s your dataset summary 📊:")
                     st.write(result)
 
-                # --- VISUALIZE ---
                 elif intent == "visualize":
                     add_message("bot", "Let's make a chart together 📈")
                     generate_plot(df)
 
-                # --- SHOW DATASET ---
                 elif intent == "show_data":
                     add_message("bot", "Here’s your dataset preview 🧾:")
                     st.write(df.head())
 
-                # --- CORRELATION ---
                 elif intent == "correlation":
                     corr = correlation_matrix(df)
                     st.write(corr)
                     add_message("bot", "Here’s your correlation matrix 📘:")
 
-                #----------- greeting ------
-                elif intent =="greeting":
+                elif intent == "greeting":
                     greeting_responses = [
                         "👋 Hey there! I’m Data Mentor — your friendly data assistant.",
                         "😊 Hi! How’s your day going?",
                         "Hello there! Ready to explore your data together? 📊",
                         "Hey! I’m great — just waiting to dive into your dataset!",
-                "Good to see you again, Definate! Let’s get started 🚀"
-
+                        "Good to see you again, Definate! Let’s get started 🚀"
                     ]
-                    add_message("bot",random.choice(greeting_responses))
+                    add_message("bot", random.choice(greeting_responses))
 
-                # --- REGRESSION ---
                 elif intent == "regression":
                     cols = df.columns.tolist()
                     x_col = st.selectbox("Independent (X)", cols)
@@ -230,18 +267,15 @@ def chatbot_page():
                         model_info = simple_regression(df, x_col, y_col)
                         st.json(model_info)
 
-                # --- CLEANING ---
                 elif intent == "clean":
                     missing = df.isna().sum()
                     add_message("bot", "Here’s a summary of missing values 🧹:")
                     st.write(missing)
 
-                # --- DATA TYPES ---
                 elif intent == "dtypes":
                     st.write(df.dtypes)
                     add_message("bot", "Here are the data types for each column 📘:")
 
-                # --- COLUMN SELECTION ---
                 elif intent == "select_columns":
                     cols = re.findall(r'\b[A-Za-z_]+\b', user_input)
                     cols = [c for c in cols if c in df.columns]
@@ -249,7 +283,6 @@ def chatbot_page():
                         st.write(df[cols].head())
                         add_message("bot", f"Here are your selected columns: {', '.join(cols)} ✅")
 
-                # --- FILTERING ---
                 elif intent == "filter":
                     match = re.search(r"(\b\w+\b)\s*(=|>|<|>=|<=)\s*([\w\s]+)", user_input)
                     if match:
@@ -269,7 +302,6 @@ def chatbot_page():
                                 else:
                                     filtered = df
                                 st.write(filtered.head())
-
                                 csv_data = filtered.to_csv(index=False).encode('utf-8')
                                 st.download_button(
                                     label="📥 Download Filtered Data",
@@ -282,13 +314,11 @@ def chatbot_page():
                         else:
                             add_message("bot", f"Column '{col}' not found.")
 
-                # --- OUTLIER DETECTION ---
                 elif intent == "outlier":
                     outlier_df = detect_outliers(df)
                     st.write(outlier_df)
                     add_message("bot", "Outliers detected ✅")
 
-                # --- DATA TRANSFORMATION / FEATURE ENGINEERING ---
                 elif intent == "transform":
                     match_create = re.search(r"create column (\w+)\s*=\s*(.+)", user_input, re.IGNORECASE)
                     if match_create:
@@ -301,31 +331,24 @@ def chatbot_page():
                             add_message("bot", f"✅ Column '{new_col}' created successfully!")
                         except Exception as e:
                             add_message("bot", f"⚠️ Could not create column: {e}")
-                #----HELP ----
-                elif intent =="help":
-                    add_message("bot","here are some things I can do  :")
+
+                elif intent == "help":
+                    add_message("bot","Here are some things I can do:")
                     st.markdown("""
                     ### 🧭 Quick Commands
-                                - `show dataset` — Preview your uploaded data 
-                                - `summarize dataset` — Get a statistical overview  
-                                - `visualize age vs salary` — Plot any two columns  
-                                - `find correlation` — Check relationships  
-                                - `run regression` — Build a simple predictive model  
-                                - `clean missing values` — Handle nulls easily  
-                             - `show data types` — See each column’s type  
-                                - `filter where Age > 30` — Filter specific rows  
-                                 - `create column BMI = Weight / Height ** 2` — Add new features  
-                                 - `detect outliers` — Identify anomalies  
-                                - `merge with another dataset` — Combine two datasets  
-                                
-                    
-"""
+                    - `show dataset` — Preview your uploaded data  
+                    - `summarize dataset` — Get a statistical overview  
+                    - `visualize age vs salary` — Plot any two columns  
+                    - `find correlation` — Check relationships  
+                    - `run regression` — Build a simple predictive model  
+                    - `clean missing values` — Handle nulls easily  
+                    - `show data types` — See each column’s type  
+                    - `filter where Age > 30` — Filter specific rows  
+                    - `create column BMI = Weight / Height ** 2` — Add new features  
+                    - `detect outliers` — Identify anomalies  
+                    - `merge with another dataset` — Combine two datasets  
+                    """)
 
-
-                    )
-
-
-                # --- MERGE DATASETS ---
                 elif intent == "merge":
                     add_message("bot", "Let's merge two datasets 🔗")
                     st.subheader("📂 Upload second dataset to merge")
