@@ -58,7 +58,12 @@ def detect_intent(user_input):
     # --- 14. MERGE / JOIN DATASETS ---
     elif re.search(r"\b(merge|join|combine|append)\b", text):
         return "merge"
+    
+    # --- 15. GREETING ---
+    elif re.search(r"\b(hi|hello|hey|good\s?(morning|afternoon|evening)|how are you|whats up|sup)\b", text):
+        return "greeting"
 
-    # --- 15. Fallback ---
+
+    # --- 16. Fallback ---
     else:
         return "unknown"

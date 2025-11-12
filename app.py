@@ -5,6 +5,7 @@ import seaborn as sns
 from datetime import datetime
 import re
 import os
+import random
 
 from nlu import detect_intent
 from analysis import summarize_data, correlation_matrix, simple_regression, detect_outliers
@@ -207,6 +208,18 @@ def chatbot_page():
                     corr = correlation_matrix(df)
                     st.write(corr)
                     add_message("bot", "Here’s your correlation matrix 📘:")
+
+                #----------- greeting ------
+                elif intent =="greeting":
+                    greeting_responses = [
+                        "👋 Hey there! I’m Data Mentor — your friendly data assistant.",
+                        "😊 Hi! How’s your day going?",
+                        "Hello there! Ready to explore your data together? 📊",
+                        "Hey! I’m great — just waiting to dive into your dataset!",
+                "Good to see you again, Definate! Let’s get started 🚀"
+
+                    ]
+                    add_message("bot",random.choice(greeting_responses))
 
                 # --- REGRESSION ---
                 elif intent == "regression":
